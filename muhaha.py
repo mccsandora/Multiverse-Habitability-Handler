@@ -47,7 +47,7 @@ def signs(P_list):
         
 def pmeas(L): #theory measure
     l,a,b,c,du,dd=tuple(L)
-    return 1/b/c/du/dd*c**(3/2)
+    return 1/b/c/du/dd
 def Nstars(L): #number of stars in the universe
     l,a,b,c,du,dd=tuple(L)
     return a**(-3/2)*b**(3/4)*c**3
