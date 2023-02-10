@@ -1,10 +1,8 @@
-
-
 import numpy as np
 
+kappa_hat=1
 
-
-#FUNCTIONS
+# FUNCTIONS
 def heaviside(x):
     return np.heaviside(x,1)
 def m1(x):
@@ -20,9 +18,12 @@ def m3(p):
         return float('%.3g' % min(p,1-p))
 minn=np.vectorize(min)
 def ramp(x):
-    return minn(1,x)
+    #return minn(1,x)
+    return x*(x<1)+(x>1)
 def relu(x):
     return x*heaviside(x)
+def rampup(x):
+    return heaviside(x)*minn(1,x)
 def signs(P_list):
     say=''.join([P_rims[i][P_list[i]] for i in range(len(P_list))])
     if say.strip()=='':
@@ -52,6 +53,14 @@ P_primes=[['      ',' photo','yellow'],\
           ['    ',' C/O',' Mg/Si'],\
           [' ',' nitrogen',' phosphorus',' sulfur'],\
           ['   ',' iron'],\
+          ['             ',' eccentricity'],\
+          ['          ',' obliquity'],\
+          ['                ','  h2o(asteroids)',' h2o(grand tack)',\
+           '     h2o(comets)',' h2o(magma ocean)'],\
+          ['    ',' atm',' slow rot'],\
+          ['  ',' B'],\
+          ['',' lightning', ' SEP', ' XUV', ' vents', ' IDP',' comets',
+           ' asteroids', ' moneta',' plan pans',' stel pans'],\
           ['      ',' guest',' tseug']]
 
 P_rims = [[p[0].strip()]+p[1:] for p in P_primes]

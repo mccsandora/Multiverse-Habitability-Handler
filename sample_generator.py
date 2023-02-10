@@ -1,4 +1,3 @@
-
 import itertools
 import numpy as np
 import sobol_seq
@@ -16,9 +15,10 @@ def make_random(Ns=10**5):
     E = sobol_seq.i4_sobol_generate(6,Ns)
     return E.T
 
-def generate_random_samples(Ns=10**5):
+def generate_random_samples(Ns=10**5,loose=False):
+    # toggle loose for better precision with Mg/Si boundary
     E = sobol_seq.i4_sobol_generate(6,Ns).T
-    lb = [rescale_all(l) for l in itertools.permutations(E)]
+    lb = [rescale_all(l,loose) for l in itertools.permutations(E)]
     l0 = np.concatenate([l[0] for l in lb],axis=1)
     l1 = np.concatenate([l[1] for l in lb],axis=1)
     l2 = np.concatenate([l[2] for l in lb],axis=1)
@@ -60,7 +60,7 @@ def rescale_permute2(number):
             continue
     return [l0,l1,l2,l3]
 
-def rescale_permute2(number):
+def rescale_permute3(number):
     E = make_random(number)
     z = np.zeros((6,0))
     l0,l1,l2,l3 = z,z,z,z
@@ -146,7 +146,7 @@ def rescale_plates(E):
     L = np.array([l,a,b,c,du,dd])
     return L
     
-def rescale_CO(E):
+def rescale_CO_loose(E):
     e_l,e_a,e_b,e_c,e_u,e_d=tuple(E)
     a_min=0.35
     a_max=1.30 
@@ -164,11 +164,36 @@ def rescale_CO(E):
     b = e_b*(b_max-b_min)+b_min
     c = e_c*(c_max-c_min)+c_min
     du = e_u*(du_max-du_min)+du_min
-    dd = 1/2.92*((Ep-Em)*e_d-1.35*du-3.97*a+7.86+Em)
+#    dd = 1/2.92*((Ep-Em)*e_d-1.35*du-3.97*a+7.86+Em)
+    dd = 1/2.92*((Ep-Em)*e_d-1.35*du-3.97*a+8.24+Em)
     l = l_min([0,a,b,c,0,0])/e_l**(1/(beta_imf-1))
     L = np.array([l,a,b,c,du,dd])
     return L
     
+def rescale_CO(E):
+    # optimized for accuracy, does not support changing threshold energies
+    e_l,e_a,e_b,e_c,e_u,e_d=tuple(E)
+    a_min=0.42
+    a_max=1.23 
+    b_min=0.0
+    b_max=3.50
+    c_min=0.1
+    c_max=134
+    du_min=0.01
+    du_max=2.1
+    #dd_min=0.68
+    #dd_max=1.10 
+    Em=-.02
+    Ep=+.02
+    a = e_a*(a_max-a_min)+a_min
+    b = e_b*(b_max-b_min)+b_min
+    c = e_c*(c_max-c_min)+c_min
+    du = e_u*(du_max-du_min)+du_min
+    dd = 1/2.92*((Ep-Em)*e_d-1.35*du-3.97*a+8.24+Em)
+    l = l_min([0,a,b,c,0,0])/e_l**(1/(beta_imf-1))
+    L = np.array([l,a,b,c,du,dd])
+    return L
+
 def rescale_plates_CO(E):
     e_l,e_a,e_b,e_c,e_u,e_d=tuple(E)
     #a_min=0.84
@@ -190,10 +215,13 @@ def rescale_plates_CO(E):
     L = np.array([l,a,b,c,du,dd])
     return L
 
-def rescale_all(E):
+def rescale_all(E,loose=False):
     L_normal = rescale_normal(E)
     L_plates = rescale_plates(E)
-    L_CO = rescale_CO(E)
+    if not loose:
+        L_CO = rescale_CO(E)
+    else:
+        L_CO = rescale_CO_loose(E)        
     L_plates_CO = rescale_plates_CO(E)
     LB =[bounds(L_normal), bounds(L_plates),\
          bounds(L_CO), bounds(L_plates_CO)]
@@ -226,88 +254,3 @@ def rescale_old(E,include_bounds=False):
         return [bounds(L), bounds(Lp)]
     else:
         return [L, Lp]
-
-
-
-
-
-# a=alpha/alpha_obs, b=beta/beta_obs, c=gamma/gamma_obs, l=lambda
-#a_min=0.2
-#a_max=7.89 #without plate tectonics
-##a_ptmin=137/153
-##a_ptmax=137/136 #with plate tectonics
-#b_min=0.0
-#b_max=3.50
-#c_min=0.1
-#c_max=134
-#du_min=0
-#du_max=2.21
-#dd_min=0.55
-#dd_max=2.05    
-
-#def make_sobol(Ns=10**5,p_quarks=1):
-#    try:
-#        E = sobol_seq.i4_sobol_generate(6,Ns)
-#    except:
-#        print('pip install sobol_seq for better accuracy')
-#        E = np.random.random_sample((6,Ns))
-#    at = E[:,1]*(a_max-a_min)+a_min
-#    #ap = E[:,1]*(a_ptmax-a_ptmin)+a_ptmin
-#    bt = E[:,2]*(b_max-b_min)+b_min
-#    ct = E[:,3]*(c_max-c_min)+c_min
-#    lt = l_min([0,at,bt,ct,0,0])/E[:,0]**(1/(beta_imf-1))
-#    #ltp = l_min(ap,bt,ct)/E[:,0]**(1/(beta_imf-1))
-#    #lo = l_min(1,1,1)/E[:,0]**(1/(beta_imf-1))
-#    dut = (E[:,4]*(du_max-du_min)+du_min)**p_quarks
-#    ddt = (E[:,5]*(dd_max-dd_min)+dd_min)**p_quarks
-#    L = np.array([lt,at,bt,ct,dut,ddt])
-#    return L
- 
-#def truss_rand(E,p_quarks=1):    
-#    a_min=0.2
-#    a_max=7.89 #without plate tectonics
-#    #a_ptmin=137/153
-#    #a_ptmax=137/136 #with plate tectonics
-#    b_min=0.0
-#    b_max=3.50
-#    c_min=0.1
-#    c_max=134
-#    du_min=0
-#    du_max=2.21
-#    dd_min=0.55
-#    dd_max=2.05
-#    at = E[:,1]*(a_max-a_min)+a_min
-#    #ap = E[:,1]*(a_ptmax-a_ptmin)+a_ptmin
-#    bt = E[:,2]*(b_max-b_min)+b_min
-#    ct = E[:,3]*(c_max-c_min)+c_min
-#    lt = l_min([0,at,bt,ct,0,0])/E[:,0]**(1/(beta_imf-1))
-#    #ltp = l_min(ap,bt,ct)/E[:,0]**(1/(beta_imf-1))
-#    #lo = l_min(1,1,1)/E[:,0]**(1/(beta_imf-1))
-#    dut = (E[:,4]*(du_max-du_min)+du_min)**p_quarks
-#    ddt = (E[:,5]*(dd_max-dd_min)+dd_min)**p_quarks
-#    L = np.array([lt,at,bt,ct,dut,ddt])
-#    return L
-
-#def rescale_split(E,N=10):
-#    lb = [rescale_all(l) for l in np.hsplit(E,N)]
-#    l0 = np.concatenate([l[0] for l in lb],axis=1)
-#    l1 = np.concatenate([l[1] for l in lb],axis=1)
-#    l2 = np.concatenate([l[2] for l in lb],axis=1)
-#    l3 = np.concatenate([l[3] for l in lb],axis=1)
-#    return [l0,l1,l2,l3]
-        
-#def make_random_all(Ns=10**5):
-#    E = sobol_seq.i4_sobol_generate(6,Ns).T
-#    L_normal = rescale_normal(E)
-#    L_plates = rescale_plates(E)
-#    L_CO = rescale_CO(E)
-#    L_plates_CO = rescale_plates_CO(E)
-#    LB =[bounds(L_normal), bounds(L_plates),\
-#         bounds(L_CO), bounds(L_plates_CO)]
-#    print([len(l.T) for l in LB])
-#    return LB
-        
-    
-    
-    
-    

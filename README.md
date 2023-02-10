@@ -1,21 +1,23 @@
-To generate the pseudo-random numbers we use the package sobol-seq.  This can be installed by:
+Code to compare multiple habitability hypoetheses in the multiverse framework.  This computes the probability of observing five fundamental constants:
+alpha = e^2/(4pi), 
+beta = m_electron/m_proton,
+gamma = m_proton/M_planck,
+delta_u = m_up/m_proton,
+delta_d = m_down/m_proton, 
+and optionally the probability of orbiting a star as massive as ours, the probability of observing such a small Hoyle resonance energy, and the probability of observing an organic-to-rock ratio as large as ours.  The code currently considers 27 different habitability conditions, amounting to 224x10^9 possible combinations.
 
-pip install sobol-seq
+To initialize, run
 
-To initialize, in an environment run
+`from muhaha import *`
 
-from muhaha import *
-
-Generate the random sample by
-
-L5 = generate_random_samples(10**5)
-
-This should take 1-2 minutes to make.
+This may take a minute.
 
 Compute the probabilities for various habitability hypotheses by
 
-compute_probs(L5)
+`compute_probs()`
 
-By default it's set to yellow + entropy, but these can be toggled.  For instance:
+By default it's set to yellow + entropy + C/O conditions, but these can be toggled.  For instance:
 
-compute_probs(L5, H_TL=[0,1], H_terr=[1])
+`compute_probs(H_TL=[0,1], H_terr=[1])`
+
+See muhaha_demo.ipynb for more examples.
