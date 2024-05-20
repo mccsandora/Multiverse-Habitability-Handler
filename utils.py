@@ -31,9 +31,36 @@ def signs(P_list):
     else:
         return say
 
+def stamp(L):
+    if not isinstance(L,np.ndarray):
+        return L
+    s = list(L.shape)
+    #if len(s)==1:
+    #    l = L[0]
+    #elif len(s)==2:
+    #    l = L[0][0]
+    l = np.mean(L)
+    if type(l)!=np.float64:
+        l = np.mean(l)
+    return tuple(s+[l])
+
+def cachewrap(f):
+    cachedict=dict()
+    def fwrap(*args):
+        T=tuple([str(f)]+
+            [stamp(k) for k in args])
+        T = tuple([t if not isinstance(t,np.ndarray) 
+                   else np.mean(t) for t in T])
+        if T in cachedict:
+            return cachedict[T]
+        else:
+            O = f(*args)
+            cachedict[T] = O
+            return O
+    return fwrap
 
 P_primes=[['      ',' photo','yellow'],\
-          ['   ',' TL'],\
+          ['   ',' TL',' ~TL'],\
           ['     ',' conv'],\
           ['    ',' bio'],\
           ['       ',' plates'],\
@@ -61,6 +88,11 @@ P_primes=[['      ',' photo','yellow'],\
           ['  ',' B'],\
           ['',' lightning', ' SEP', ' XUV', ' vents', ' IDP',' comets',
            ' asteroids', ' moneta',' plan pans',' stel pans'],\
+          ['',' K/Na/Cl pumps', ' ice floats', ' viscosity increased 23%',
+           ' viscosity + ice', ' al26', ' water weight'],\
+          ['       ',' binary'],\
+          ['          ',' icy moons'],\
+          ['      ',' rogue'],\
           ['      ',' guest',' tseug']]
 
 P_rims = [[p[0].strip()]+p[1:] for p in P_primes]

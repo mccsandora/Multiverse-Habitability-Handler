@@ -3,8 +3,6 @@ import numpy as np
 import sobol_seq
 
 
-
-
 beta_imf=2.35
 def l_min(L): #smallest star capable of H fusion
     l,a,b,c,du,dd=tuple(L)
@@ -24,53 +22,6 @@ def generate_random_samples(Ns=10**5,loose=False):
     l2 = np.concatenate([l[2] for l in lb],axis=1)
     l3 = np.concatenate([l[3] for l in lb],axis=1)
     return [l0,l1,l2,l3]    
-
-
-def rescale_permute(E):
-    if type(E)==int:
-        E = make_random(E)
-    lb = [rescale_all(l) for l in itertools.permutations(E)]
-    l0 = np.concatenate([l[0] for l in lb],axis=1)
-    l1 = np.concatenate([l[1] for l in lb],axis=1)
-    l2 = np.concatenate([l[2] for l in lb],axis=1)
-    l3 = np.concatenate([l[3] for l in lb],axis=1)
-    return [l0,l1,l2,l3]
-
-def rescale_permute2(number):
-    E = make_random(number)
-    z = np.zeros((6,0))
-    l0,l1,l2,l3 = z,z,z,z
-    for l in itertools.permutations(E):
-        l = rescale_all(l)
-        try:
-            l0 = np.concatenate([l0,l[0]],axis=1)
-        except:
-            continue
-        try:
-            l1 = np.concatenate([l1,l[1]],axis=1)
-        except:
-            continue
-        try:
-            l2 = np.concatenate([l2,l[2]],axis=1)
-        except:
-            continue
-        try:
-            l3 = np.concatenate([l3,l[3]],axis=1)
-        except:
-            continue
-    return [l0,l1,l2,l3]
-
-def rescale_permute3(number):
-    E = make_random(number)
-    z = np.zeros((6,0))
-    l0,l1,l2,l3 = z,z,z,z
-    for l in itertools.permutations(E):
-        l = rescale_all(l)
-        l0 = np.concatenate([l0,l[0]],axis=1)
-        l1 = np.concatenate([l1,l[1]],axis=1)
-        l2 = np.concatenate([l2,l[2]],axis=1)
-        l3 = np.concatenate([l3,l[3]],axis=1)
-    return [l0,l1,l2,l3]
 
 def bounds(L):
     l,a,b,c,du,dd=tuple(L)
@@ -228,7 +179,8 @@ def rescale_all(E,loose=False):
     return LB
 
 
-def rescale_old(E,include_bounds=False):
+# DEPRECATED
+'''def rescale_old(E,include_bounds=False):
     if type(E)==int:
         E = make_random(E)
     e_l,e_a,e_b,e_c,e_u,e_d=tuple(E)
@@ -254,3 +206,50 @@ def rescale_old(E,include_bounds=False):
         return [bounds(L), bounds(Lp)]
     else:
         return [L, Lp]
+
+
+def rescale_permute(E):
+    if type(E)==int:
+        E = make_random(E)
+    lb = [rescale_all(l) for l in itertools.permutations(E)]
+    l0 = np.concatenate([l[0] for l in lb],axis=1)
+    l1 = np.concatenate([l[1] for l in lb],axis=1)
+    l2 = np.concatenate([l[2] for l in lb],axis=1)
+    l3 = np.concatenate([l[3] for l in lb],axis=1)
+    return [l0,l1,l2,l3]
+
+def rescale_permute2(number):
+    E = make_random(number)
+    z = np.zeros((6,0))
+    l0,l1,l2,l3 = z,z,z,z
+    for l in itertools.permutations(E):
+        l = rescale_all(l)
+        try:
+            l0 = np.concatenate([l0,l[0]],axis=1)
+        except:
+            continue
+        try:
+            l1 = np.concatenate([l1,l[1]],axis=1)
+        except:
+            continue
+        try:
+            l2 = np.concatenate([l2,l[2]],axis=1)
+        except:
+            continue
+        try:
+            l3 = np.concatenate([l3,l[3]],axis=1)
+        except:
+            continue
+    return [l0,l1,l2,l3]
+
+def rescale_permute3(number):
+    E = make_random(number)
+    z = np.zeros((6,0))
+    l0,l1,l2,l3 = z,z,z,z
+    for l in itertools.permutations(E):
+        l = rescale_all(l)
+        l0 = np.concatenate([l0,l[0]],axis=1)
+        l1 = np.concatenate([l1,l[1]],axis=1)
+        l2 = np.concatenate([l2,l[2]],axis=1)
+        l3 = np.concatenate([l3,l[3]],axis=1)
+    return [l0,l1,l2,l3]'''

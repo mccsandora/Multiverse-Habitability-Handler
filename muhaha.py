@@ -7,27 +7,36 @@ from scipy.integrate import quad
 from tqdm import tqdm
 
 from sample_generator import generate_random_samples
-from utils import heaviside, minn, relu, ramp, rampup, signs, m3, r3, r2
+from utils import heaviside, minn, relu, ramp, rampup, signs, m3, r3, r2, cachewrap
+
+def unpack_C(C,num):
+    if C==(1,1):
+        return C
+    return tuple(C[:,:num])
 
 
 #########           
 # STARS #
 #########
         
+@cachewrap
 def pmeas(L): # theory measure
     l,a,b,c,du,dd=tuple(L)
     return 1/b/c/du/dd
+@cachewrap
 def Nstars(L): # number of stars in the universe
     l,a,b,c,du,dd=tuple(L)
     return a**(-3/2)*b**(3/4)*c**3
 
-beta_imf=2.35
+
 def l_min(L): #smallest star capable of H fusion
     l,a,b,c,du,dd=tuple(L)
     return .0393*a**(3/2)*b**(-3/4)
+@cachewrap
 def masch(L): # imf with a knee
     l,a,b,c,du,dd=tuple(L)
-    return 8.9403*(1+(5.06*l_min(L)/l)**1.35)**-1.4
+    beta_imf=2.35
+    return 8.9403*(1+(5.06*l_min(L)/l)**(beta_imf-1))**-1.4
 
 # NUCLEAR EFFICIENCY
 def e_nuc(L):
@@ -41,10 +50,13 @@ def l_TL(L): # tidal locking limit
 def l_TLb(L): # t_TL compared to t_bio
     l,a,b,c,du,dd=tuple(L)
     return .474*a**(47/17)*b**(12/17)*c**(-4/11)
+@cachewrap
 def f_TL(L, p_TL):
     l,a,b,c,du,dd=tuple(L)
     if p_TL==1:
         return heaviside(l-l_TL(L))
+    if p_TL==2:
+        return heaviside(l_TL(L)-l)
     else:
         return 1
 
@@ -52,6 +64,7 @@ def f_TL(L, p_TL):
 def l_conv(L): # convective stellar mass
     l,a,b,c,du,dd=tuple(L)
     return .194*a**3*b*c**(-1/2)
+@cachewrap
 def f_conv(L, p_conv):
     l,a,b,c,du,dd=tuple(L)
     if p_conv==1:
@@ -63,6 +76,7 @@ def f_conv(L, p_conv):
 def l_bio(L): # stellar lifetime is Gyr
     l,a,b,c,du,dd=tuple(L)
     return 1.2*a**(8/5)*b**(-1/5)*c**(-4/5)*e_nuc(L)**(2/5)
+@cachewrap
 def f_bio(L, p_bio):  
     l,a,b,c,du,dd=tuple(L)
     if p_bio==1:
@@ -77,6 +91,7 @@ def l_fizzle(L,w): # star too red: w is longest wavelength in nm
 def l_fry(L,w): # star too blue: w is shortest wavelength in nm
     l,a,b,c,du,dd=tuple(L)
     return 1.75*(w/400)**(-40/19)*a**(60/19)*b**(20/19)*c**(-10/19)
+@cachewrap
 def f_photo(L, p_photo): 
     l,a,b,c,du,dd=tuple(L)
     if p_photo==2:
@@ -97,19 +112,21 @@ def Z_min(L): # minimum metallicity for planet formation
     return 6.3*10**-4*(1.8*l)**(3/4)*a**-3*b**(-1/2)*c**(1/2)
 def f_pstep(L): # fraction of stars with planets (step function)
     return heaviside(Z_inf-Z_min(L))
-def f_sn(L): # fraction of galaxies that can retain sn ejecta
+def f_sn(L,Q_hat): # fraction of galaxies that can retain sn ejecta
     l,a,b,c,du,dd=tuple(L)
-    return erfc(4.41*10**(-5)*a**2*b**(5/3))
-def f_p(L): # fraction of stars with planets
-    return f_sn(L)*f_pstep(L)
+    return erfc(4.41*10**(-5)*a**2*b**(5/3)/Q_hat)
+@cachewrap
+def f_p(L,Q_hat): # fraction of stars with planets
+    return f_sn(L,Q_hat)*f_pstep(L)
 
 # HOT JUPITERS
-def Z_maxpp(L): # maximum metallicity for no hot jupiters (planet-planet interactions)
+def Z_maxpp(L,kappa_hat): # maximum metallicity for no hot jupiters (planet-planet interactions)
     l,a,b,c,du,dd=tuple(L)
-    return .12/(1.8*l)*a**(13/6)*b**(-3/2)
-def f_hj(L, p_hj): # simplified fraction of earths without hot jupiters
+    return .12/(1.8*l)*a**(13/6)*b**(-3/2)/kappa_hat
+@cachewrap
+def f_hj(L, kappa_hat, p_hj): # simplified fraction of earths without hot jupiters
     if p_hj==1:
-        return (1-(Z_inf/Z_maxpp(L))**2)*heaviside(Z_maxpp(L)-Z_inf)
+        return (1-(Z_inf/Z_maxpp(L,kappa_hat))**2)*heaviside(Z_maxpp(L,kappa_hat)-Z_inf)
     else:
         return 1
 
@@ -122,12 +139,12 @@ def f_hj(L, p_hj): # simplified fraction of earths without hot jupiters
 qiso=1/3 # slope of planetesimal masses
 p_sigma=0 # planet variance set by 0: entropy or 1: shot noise
 p_ldep=1 # include stellar mass-planet mass correlation 0: no 1: yes
-def r_iso(L): # ratio of isolation mass to terrrestrial mass
+def r_iso(L,kappa_hat): # ratio of isolation mass to terrrestrial mass
     l,a,b,c,du,dd=tuple(L)
-    return .1*(1.8*l)**2*a**-4*b**(-21/8)
-def r_inn(L): # ratio of innder disk mass to isolation mass
+    return .1*(1.8*l)**2*a**-4*b**(-21/8)*kappa_hat**(3/2)
+def r_inn(L,kappa_hat): # ratio of innder disk mass to isolation mass
     l,a,b,c,du,dd=tuple(L)
-    return 30*(1.8*l)**(-1/3)*a**(5/6)*b**(5/8)
+    return 30*(1.8*l)**(-1/3)*a**(5/6)*b**(5/8)*kappa_hat**(-1/2)
 def fiso(x): # fraction of terrestrial planets
     return min(1,(x/.3)**qiso)-min(1,(x/4)**qiso)
 f_iso=np.vectorize(fiso)
@@ -135,38 +152,40 @@ def n_iso(x): # average number of planets
     return (qiso-1)/qiso*(x-x**(1-qiso))/(1-x**(1-qiso))
 
 # GIANT IMPACT MASS
-def r_olig(L): # ratio of oligarch mass to terrestrial mass
+def r_olig(L,kappa_hat): # ratio of oligarch mass to terrestrial mass
     l,a,b,c,du,dd=tuple(L)
-    return 2.64*(1.8*l)**(p_ldep*5/2)*a**(-9/2)*b**(-45/16) #a ccretion
+    return 2.64*(1.8*l)**(p_ldep*5/2)*a**(-9/2)*b**(-45/16)*kappa_hat**(3/2) # accretion
 #    return 2.64*(1.8*l)**(p_ldep*139/40)*a**(-39/4)*b**(-3)*c**(3/4) #irradiation
 def f_olig(x,s): # number of terrestrial mass oligarchs
     return 1/2*(erf((np.log(4/x)+s**2/2)/np.sqrt(2)/s)\
                 -erf((np.log(.3/x)+s**2/2)/np.sqrt(2)/s))
 #    return np.exp(-np.pi/4*(.3/x)**2)-np.exp(-np.pi/4*(4/x)**2) # rayleigh dist
-def sigma_m(L): #variance of m_olig
-    return [1/np.sqrt(6),1/np.sqrt(r_inn(L))]
-def n_olig(L): # average number of planets 
+def sigma_m(L, kappa_hat): #variance of m_olig
+    return [1/np.sqrt(6),1/np.sqrt(r_inn(L, kappa_hat))]
+def n_olig(L, kappa_hat): # average number of planets 
     l,a,b,c,du,dd=tuple(L)
-    return 3*(1.8*l)**(-5/6)*a**(4/3)*b**(13/16) # accretion
+    return 3*(1.8*l)**(-5/6)*a**(4/3)*b**(13/16)*kappa_hat**(-1/2) # accretion
 #    return 3*(1.8*l)**(-11/8)*a**(17/4)*b**(11/12)*c**(-5/12) # irradiation
 
-def n_terr(L, p_terr):
+@cachewrap
+def n_terr(L, kappa_hat, p_terr):
     if p_terr==2:
-        return n_iso(r_inn(L))*f_iso(r_iso(L))
+        return n_iso(r_inn(L, kappa_hat))*f_iso(r_iso(L,kappa_hat))
     elif p_terr==1:
-        return n_olig(L)*f_olig(r_olig(L),sigma_m(L)[p_sigma])
+        return n_olig(L, kappa_hat)*f_olig(r_olig(L, kappa_hat),sigma_m(L, kappa_hat)[p_sigma])
     else:
         return 1
 
 # TEMPERATE ZONE
-def temp_thresh(L): # temperate zone smaller than disk size
+def temp_thresh(L, kappa_hat): # temperate zone smaller than disk size
     l,a,b,c,du,dd=tuple(L)
-    return .01*(1.8*l)**(17/12)*a**(-5)*b**(-2)*c**(1/2)
-def n_temp(L, p_temp): # number of planets in temperate zone
+    return .01*(1.8*l)**(17/12)*a**(-5)*b**(-2)*c**(1/2)*kappa_hat
+@cachewrap
+def n_temp(L, kappa_hat, p_temp): # number of planets in temperate zone
     l,a,b,c,du,dd=tuple(L)
     if p_temp==1:
-        return .431*l**(-85/48)*a**(11/2)*b**(7/4)*c**(-5/8)\
-    *heaviside(1-temp_thresh(L))
+        return .431*l**(-85/48)*a**(11/2)*b**(7/4)*c**(-5/8)*kappa_hat**(-1/2)\
+    *heaviside(1-temp_thresh(L, kappa_hat))
     else:
         return 1
 
@@ -175,19 +194,21 @@ def n_temp(L, p_temp): # number of planets in temperate zone
 # LIFE #
 ########
     
-# number of hard steps
+@cachewrap
 def r_time(L, p_time): # ratio of stellar to molecular timescale
     l,a,b,c,du,dd=tuple(L)
     if p_time==1:
         return l**(-5/2)*a**(4)*b**(-1/2)*c**-2*e_nuc(L)
     else:
         return 1
+@cachewrap
 def r_area(L, p_area): # ratio of planet area to molecular area
     l,a,b,c,du,dd=tuple(L)
     if p_area==1:
         return a**(3/2)*b**(3/4)*c**-3 # L_mol~a_0
     else:
         return 1
+@cachewrap
 def S_tot(L, p_S, ec=1): # entropy produced in stellar lifetime
     l,a,b,c,du,dd=tuple(L)
     S = (1.8*l)**(-119/40)*a**(17/2)*b**2*c**(-17/4)*e_nuc(L)
@@ -228,6 +249,7 @@ def rat_tdown(L): # ratio of timescales with drawdown
 #    l,a,b,c,du,dd=tuple(L)
 #    return [0,rat_tdown(L),rat_tup(L),\
 #            2/(1/(rat_tdown(L)+10**-6)+1/rat_tup(L))]
+@cachewrap
 def f_O2(L, p_O2):
     l,a,b,c,du,dd=tuple(L)
     if p_O2==1:
@@ -255,9 +277,9 @@ def t_star(L): # stellar lifetime
     return 5500*(1.8*l)**(-5/2)*a**2*b**(-2)
 
 # COMETS
-def d_comet(L): # typical comet size
+def d_comet(L, kappa_hat): # typical comet size
     l,a,b,c,du,dd=tuple(L)
-    return 1*(1.8*l)*a**(-25/9)*b**(-3/2)*c**(-5/6)*km
+    return 1*(1.8*l)*a**(-25/9)*b**(-3/2)*c**(-5/6)*kappa_hat**(2/3)*km
 def d_sox(L): # extinction size (sulfates)
     l,a,b,c,du,dd=tuple(L)
     return 1*(1.8*l)**(1/4)*a**(-3)*b**(-1)*c**(-1/2)*km
@@ -268,9 +290,9 @@ def d_dust(L): # extinction size (dust)
 def d_both(L):
     l,a,b,c,du,dd=tuple(L)
     return minn(d_sox(L),d_dust(L))
-def G_comets(L): # comet extinction rate
+def G_comets(L, kappa_hat): # comet extinction rate
     l,a,b,c,du,dd=tuple(L)
-    return (1.8*l)**(-16/5)*a**8*b**(-1/2)*(ramp(d_comet(L)/d_both(L)))**(1.5)/(3*Myr)/30
+    return (1.8*l)**(-16/5)*a**8*b**(-1/2)*kappa_hat**(3/2)*(ramp(d_comet(L, kappa_hat)/d_both(L)))**(1.5)/(3*Myr)/30
 
 # GRBS
 def vh(x): # volume function
@@ -281,12 +303,12 @@ def vh(x): # volume function
     if 1<=x:
         return 1
 vg=np.vectorize(vh)
-def rat_grb(L): # ratio of grb death radius to galaxy radius 
+def rat_grb(L, Q_hat, kappa_hat): # ratio of grb death radius to galaxy radius 
     l,a,b,c,du,dd=tuple(L)
-    return 1/6*a**(-1)*b**(-3/2)*c**(-1/2)
-def G_grb(L): # grb extinction rate
+    return 1/6*a**(-1)*b**(-3/2)*c**(-1/2)*kappa_hat**(3/2)*Q_hat**(-1/2)
+def G_grb(L, Q_hat, kappa_hat): # grb extinction rate
     l,a,b,c,du,dd=tuple(L)
-    return c*36*vg(rat_grb(L))/(90*Myr)
+    return c*Q_hat**(3/2)*36*vg(rat_grb(L, Q_hat, kappa_hat))/(90*Myr)
 
 # GLACIATIONS
 def Q_dirty(L): # dimensional analysis estimate of heat flux 
@@ -318,9 +340,9 @@ def G_vol(L): # volcano extinction rate
     return (Q_both(L)/(47*TW))**(1/2)*a**(-3/4)*b**(-3/8)*c**(3/2)/(90*Myr)
 
 # TOTAL
-def G_death(L, p_comets, p_grb, p_glac, p_vol): # total extinction rate
+def G_death(L, Q_hat, kappa_hat, p_comets, p_grb, p_glac, p_vol): # total extinction rate
     l,a,b,c,du,dd=tuple(L)
-    return (p_comets*G_comets(L)+p_grb*G_grb(L)\
+    return (p_comets*G_comets(L, kappa_hat)+p_grb*G_grb(L, Q_hat, kappa_hat)\
             +p_glac*G_glac(L)+p_vol*G_vol(L))/(p_comets+p_grb+p_glac+p_vol+10**-6)
 def f_setback(t,G):
     return (1-t*G)*heaviside(1-t*G)
@@ -328,15 +350,16 @@ def f_IDH(t,G):
     return (t*G+10**-6)*(1-t*G)*heaviside(1-t*G)
 def f_reset(t,ts,G):
     return 1-(1-np.exp(-10*t*G))**(ts/(10*t))
-def f_int(L, p_death, p_comets, p_grb, p_glac, p_vol): # fraction of life that develops intelligence
+@cachewrap
+def f_int(L, Q_hat, kappa_hat, p_death, p_comets, p_grb, p_glac, p_vol): # fraction of life that develops intelligence
     l,a,b,c,du,dd=tuple(L)
     if p_death==1:
-        return f_setback(t_rec(L),G_death(L, p_comets, p_grb, p_glac, p_vol))
+        return f_setback(t_rec(L),G_death(L, Q_hat, kappa_hat, p_comets, p_grb, p_glac, p_vol))
     elif p_death==2:
-        return f_IDH(t_rec(L),G_death(L, p_comets, p_grb, p_glac, p_vol))
+        return f_IDH(t_rec(L),G_death(L, Q_hat, kappa_hat, p_comets, p_grb, p_glac, p_vol))
     elif p_death==3:
         return f_reset(t_rec(L),t_star(L),\
-                       G_death(L, p_comets, p_grb, p_glac, p_vol))
+                       G_death(L, Q_hat, kappa_hat, p_comets, p_grb, p_glac, p_vol))
     else:
         return 1
 
@@ -398,13 +421,15 @@ def not_Cr(L):
 def gi(x):
     a  = np.searchsorted(gamma_inv[:,0],x)
     return gamma_inv[a,1]
-def f_mr(L,p_metal): #metal to rock ratio
+@cachewrap
+def f_mr(L, kappa_hat, p_metal): #metal to rock ratio
     l,a,b,c,du,dd=tuple(L)
     if p_metal==1:
-        return 1-np.exp(-gi(.638*r_rm*a**(.56)*b**(-.82)*c**(-.54)))
+        return 1-np.exp(-gi(.638*r_rm*a**(.56)*b**(-.82)*c**(-.54)*kappa_hat**.81))
     else:
         return 1
 
+@cachewrap
 def f_CO(L,p_CO,k_C=-.0089,k_O=.0037,k_Mg=-.500,k_Si=.0062):
     if p_CO==1:
         return heaviside(Delta_ER(L)-k_C)*heaviside(k_O-Delta_ER(L))
@@ -413,6 +438,7 @@ def f_CO(L,p_CO,k_C=-.0089,k_O=.0037,k_Mg=-.500,k_Si=.0062):
     else:
         return 1
     
+@cachewrap
 def f_NPS(L,p_NPS):    
     if p_NPS==1:
         return heaviside(N14_stable(L))
@@ -427,6 +453,7 @@ def f_NPS(L,p_NPS):
     else:
         return 1
 
+@cachewrap
 def f_Fe(L,p_Fe):
     if p_Fe==1:
 #        return heaviside(Ni_unstable(L))*heaviside(Fe_stable(L))
@@ -439,10 +466,9 @@ def f_Fe(L,p_Fe):
 ##########################
 # PLANETARY HABITABILITY #
 ##########################
-
-kappa_hat=1
         
-def f_ecc(L,p_ecc,e_max=.25):
+@cachewrap
+def f_ecc(L, kappa_hat, p_ecc,e_max=.25):
     l,a,b,c,du,dd=tuple(L)
     e_bar = .04*kappa_hat**(1/2)*(1.8*l)**(17/16)*a**(-7/2)*b**(-5/4)*c**(3/8)
     if p_ecc==1:
@@ -451,43 +477,45 @@ def f_ecc(L,p_ecc,e_max=.25):
     else:
         return 1
 
-def f_water(L,p_water):
-        return 1
-
-def om_earth_jup_rat(L):
+def om_earth_jup_rat(L, kappa_hat):
     l,a,b,c,du,dd=tuple(L)
     return .62*kappa_hat**(-1/3)*(1.8*l)**(-3.44)*a**(11.03)*b**(2.76)*c**(-1.48)
     
-def om_moon_jup_rat(L):
+def om_moon_jup_rat(L, kappa_hat):
     l,a,b,c,du,dd=tuple(L)
     return 1.34*kappa_hat**(7/6)*(1.8*l)**(3.93)*a**(-9.97)*b**(-3.99)*c**(.77)
 
-def f_moon(L):
+def f_moon(L, kappa_hat):
     l,a,b,c,du,dd=tuple(L)
     v_rat = 9.33*kappa_hat**(-1/2)*(1.8*l)**(-11/16)*a**2*b*c**(-1/8)
     t_rat = 12.4*kappa_hat**(-3/2)*(1.8*l)**(103/12)*a**(-41/2)*b**(-9/4)*c**(7/2)
     return .014*heaviside(v_rat-1)*heaviside(t_rat-1)
 
-def f_obliquity(L,p_obliquity):
+@cachewrap
+def f_obliquity(L, kappa_hat, p_obliquity):
     if p_obliquity==1:
-        return heaviside(om_earth_jup_rat(L)+om_moon_jup_rat(L)-1)*\
-               (f_moon(L)*heaviside(1-om_earth_jup_rat(L))+\
-               heaviside(om_earth_jup_rat(L)-1))
+        return heaviside(om_earth_jup_rat(L, kappa_hat)+om_moon_jup_rat(L, kappa_hat)-1)*\
+               (f_moon(L, kappa_hat)*heaviside(1-om_earth_jup_rat(L, kappa_hat))+\
+               heaviside(om_earth_jup_rat(L, kappa_hat)-1))
         #return f_moon(L) 
     else:
         return 1
 
 def Hw(f_h2o,k_h2o):
     fw = 1 - np.exp(-9.52*f_h2o)
-    hw = [fw*(1-fw),fw**6*(1-fw)**3,
-          (1-fw)**2,fw**2,
-          heaviside(.92-fw),heaviside(fw-.05)]
+    hw = [fw*(1-fw),
+          fw**6*(1-fw)**3,
+          (1-fw)**2,
+          fw**2,
+          heaviside(.92-fw),
+          heaviside(fw-.05)]
     return hw[k_h2o]
 
 def Fneb(q):
     return 2/3-1/6*np.exp(1/q-1)*q*(1+q+2*q**2)+1/(6*math.e)*(expi(1/q)-expi(1))
 
-def f_ocean(L,p_ocean,r_damp,k_h2o):
+@cachewrap
+def f_ocean(L,kappa_hat, p_ocean,r_damp,k_h2o):
     l,a,b,c,du,dd=tuple(L)
     if p_ocean==1:
         z_damp = kappa_hat**(3/2)*(1.8*l)**(-167/40)*a**(21/2)*b**(-13/4)*c**(-5/4)
@@ -528,7 +556,8 @@ def f_spot(L):
     return fs
 
         
-def f_atm(L,p_atm,k_atm_source,k_atm_N,k_atm_min):
+@cachewrap
+def f_atm(L, kappa_hat, p_atm,k_atm_source,k_atm_N,k_atm_min):
     l,a,b,c,du,dd=tuple(L)
     if k_atm_source==0:
         m_atm = kappa_hat*(1.8*l)**(21/10)*a**(-11/2)*b**(-25/12)*c**(1/3)*f_NPS(L,1)**k_atm_N
@@ -560,7 +589,8 @@ def f_atm(L,p_atm,k_atm_source,k_atm_N,k_atm_min):
     else:
         return 1
     
-def f_B(L,p_B):
+@cachewrap
+def f_B(L, kappa_hat, p_B):
     l,a,b,c,du,dd=tuple(L)
     r_mp2pl = 10*(1.8*l)**(23/60)*a**(-13/12)*b**(-11/24)*c**(1/6)
     Ra = 1000*a**(7/3)*b**(7/6)*c**(-2/3)
@@ -580,7 +610,8 @@ def f_B(L,p_B):
 # ORIGIN OF LIFE #
 ##################
 
-def f_ool(L,p_ool,k_SEP):
+@cachewrap
+def f_ool(L, kappa_hat, p_ool,k_SEP):
     l,a,b,c,du,dd=tuple(L)
     if p_ool==1: # lightning
         return (1.8*l)**(-5/2)*a**(7)*b**(3/2)*c**(-4)
@@ -607,12 +638,81 @@ def f_ool(L,p_ool,k_SEP):
         return kappa_hat**(9/8)*(1.8*l)**(-33/160)*a**(361/24)*b**(-7/4)*c**(-51/16)        
     else:
         return 1
+
+####################
+# EXOTIC OBSERVERS #
+####################
+
+@cachewrap
+def f_binary(L,p_bin):
+    l,a,b,c,du,dd=tuple(L)
+    if p_bin==1:
+        return 1/(1+1*a**(-25/21)*b**(29/42)*c**(2/21))
+    else:
+        return 1
+    
+@cachewrap
+def f_water(L, kappa_hat, p_water):
+    l,a,b,c,du,dd=tuple(L)
+    e_h2o = a**2*b**(3/2)
+
+    if p_water==1:
+        return heaviside(1.11-e_h2o)*heaviside(e_h2o-.89) # K/Na/Cl pumps
+    if p_water==2:
+        return heaviside(e_h2o-.98) # ice floats
+    if p_water==3:
+        return heaviside(1.03-e_h2o) # viscosity increased 23%
+    if p_water==4:
+        return heaviside(e_h2o-.98)*heaviside(1.03-e_h2o) #viscosity + ice
+
+    if p_water==5: # al26
+        t_al26 = 1+7.29*(b-1)+26.03*(1.92*dd-.92*du-1)\
+    -25.72*0-75.32*(a-1)
+        return .014*heaviside(t_al26-.1)*heaviside(10-t_al26)
+    if p_water==6: # liquid surface water body fraction
+        ww = 10**-4*kappa_hat*(1.8*l)**(17/12)*a**(-5)*b**(-2)*c**(1/2)
+        return ww
+    else:
+        return 1
+    
+@cachewrap
+def f_rogue(L, kappa_hat, p_rogue):
+    l,a,b,c,du,dd=tuple(L)
+    if p_rogue==1:
+        x = a*b/kappa_hat
+        return 10*x**(3/10)*heaviside(1-.018*x)
+    else:
+        return 1
+    
+@cachewrap
+def f_icy_moons(L, kappa_hat, p_icymoons):
+    l,a,b,c,du,dd=tuple(L)
+    if p_icymoons==1:
+        r_ice_disk = .027*kappa_hat*(1.8*l)**(11/10)*a**(-4)*b**(-4/3)*c**(1/3)
+        r_ice_moon = 20/250*kappa_hat**(-1/3)*(1.8*l)**.24*a**-2.11*b**.62*c**1.41
+        #N_ice_moon = 6*kappa_hat**(-1/3)*(1.8*l)**.91*a**-1.95*b**-.01*c**.23
+        N_ice_moon = 6*kappa_hat**(-1/3)*(1.8*l)**1.18*a**-2.70*b**-.09*c**.31
+        return N_ice_moon*\
+    (1-r_ice_disk)/(1-.027)*\
+    heaviside(1-r_ice_disk)*\
+    heaviside(5*20/250-r_ice_moon)
+    else:
+        return 1
+    
+@cachewrap
+def f_stellar_surface(L,p_ss):
+    l,a,b,c,du,dd=tuple(L)
+    ss = 21.17*(1.8*l)**(19/40)*a**(-3/2)*b**(-1)*c**(1/4)
+    if p_ss==1:
+        return heaviside(1-ss)
+    else:
+        return 1
     
 #######################
 # NUMBER OF OBSERVERS #
 #######################
 
-def probs_nobs(LB, P_list, Q_l=1, Q_ER=0, n_hard=1,
+def probs_nobs(LB, P_list, CB=(1,1), Q_l=1, Q_ER=0, n_hard=1,
                k_C=-.0089, k_O=.0037, k_Mg=-.500, k_Si=.0062,
                e_max=.35, r_damp=.5, k_h2o=0,
                k_atm_source=0, k_atm_N=0, k_atm_min=0,
@@ -627,38 +727,44 @@ def probs_nobs(LB, P_list, Q_l=1, Q_ER=0, n_hard=1,
     p_eccentricity,p_obliquity,p_ocean,\
     p_atm,p_B,\
     p_ool,\
+    p_water,p_binary,p_icy_moons,p_rogue,\
     p_guest = P_list
 
     L = LB[p_plates+2*(p_CO>0)]
     l,a,b,c,du,dd=tuple(L)
+    Q_hat, kappa_hat = unpack_C(CB,len(l))
 
     n = p_measure(L)\
         *Nstars(L)\
-        *masch(L)**1\
+        *masch(L)\
         *f_photo(L, p_photo)\
         *f_TL(L, p_TL)\
         *f_conv(L, p_conv)\
         *f_bio(L, p_bio)\
         *f_plates(L, p_plates)\
-        *f_p(L)**1\
-        *f_hj(L, p_hj)\
-        *n_terr(L, p_terr)\
-        *n_temp(L, p_temp)\
+        *f_p(L, Q_hat)\
+        *f_hj(L, kappa_hat, p_hj)\
+        *n_terr(L, kappa_hat, p_terr)\
+        *n_temp(L, kappa_hat, p_temp)\
         *r_time(L, p_time)**n_hard\
         *r_area(L, p_area)**n_hard\
         *S_tot(L, p_S)**n_hard\
         *f_O2(L, p_O2)\
-        *f_int(L, p_death, p_comets, p_grb, p_glac, p_vol)\
-        *f_mr(L, p_metal)\
+        *f_int(L, Q_hat, kappa_hat, p_death, p_comets, p_grb, p_glac, p_vol)\
+        *f_mr(L, kappa_hat, p_metal)\
         *f_CO(L, p_CO, k_C, k_O, k_Mg, k_Si)\
         *f_NPS(L, p_NPS)\
         *f_Fe(L, p_Fe)\
-        *f_ecc(L, p_eccentricity, e_max)\
-        *f_obliquity(L, p_obliquity)\
-        *f_ocean(L, p_ocean, r_damp, k_h2o)\
-        *f_atm(L, p_atm, k_atm_source, k_atm_N, k_atm_min)\
-        *f_B(L,p_B)\
-        *f_ool(L,p_ool,k_SEP)        
+        *f_ecc(L, kappa_hat, p_eccentricity, e_max)\
+        *f_obliquity(L, kappa_hat, p_obliquity)\
+        *f_ocean(L, kappa_hat, p_ocean, r_damp, k_h2o)\
+        *f_atm(L, kappa_hat, p_atm, k_atm_source, k_atm_N, k_atm_min)\
+        *f_B(L, kappa_hat, p_B)\
+        *f_ool(L, kappa_hat, p_ool,k_SEP)\
+        *f_water(L, kappa_hat, p_water)\
+        *f_binary(L, p_binary)\
+        *f_rogue(L, kappa_hat, p_rogue)\
+        *f_icy_moons(L, kappa_hat, p_icy_moons)
     
     if return_ps:
         D = np.sum(n)
@@ -669,7 +775,7 @@ def probs_nobs(LB, P_list, Q_l=1, Q_ER=0, n_hard=1,
         pdd = np.sum(n[dd>=1])/D
         pall = [m3(pa),m3(pb),m3(pc),m3(pdu),m3(pdd)]
         if Q_l==1:
-            pl = probs_l(L, P_list, n_hard, 
+            pl = probs_l(L, P_list, CB, n_hard, 
                          k_C,k_O,k_Mg,k_Si, 
                          k_h2o, 
                          k_atm_source, k_atm_N, k_atm_min,
@@ -687,7 +793,7 @@ def probs_nobs(LB, P_list, Q_l=1, Q_ER=0, n_hard=1,
     else:
         return n
 
-def probs_l(L, P_list, n_hard, 
+def probs_l(L, P_list, CB, n_hard, 
             k_C,k_O,k_Mg,k_Si, 
             k_h2o, 
             k_atm_source, k_atm_N, k_atm_min,
@@ -697,7 +803,7 @@ def probs_l(L, P_list, n_hard,
     # probability of being around a sunlike star within our universe
     l,a,b,c,du,dd=tuple(L)    
     lo = l_min([1,1,1,1,1,1])/l_min(L)*l
-    nl = probs_nobs([[lo,1,1,1,1,1]]*4,P_list,n_hard=n_hard,
+    nl = probs_nobs([np.array([lo]+[np.ones_like(lo)]*5)]*4,P_list,CB, n_hard=n_hard,
                     k_C=k_C,k_O=k_O,k_Mg=k_Mg,k_Si=k_Si,
                     k_h2o=k_h2o, 
                     k_atm_source=k_atm_source, k_atm_N=k_atm_N, k_atm_min=k_atm_min,
@@ -725,6 +831,7 @@ if 'L5' not in globals():
 Btt = np.prod([0.151, 0.0537, 0.0976, 0.0873, 0.218])
     
 def compute_probs(LB=L5,
+                  CB=(1,1),
                   H_photo=[2],
                   H_TL=[0],
                   H_conv=[0],
@@ -752,6 +859,10 @@ def compute_probs(LB=L5,
                   H_atm=[0],
                   H_B=[0],
                   H_ool=[0],
+                  H_water=[0],
+                  H_binary=[0],
+                  H_icy_moons=[0],
+                  H_rogue=[0],
                   H_guest=[0],
                   Q_l=0,
                   Q_ER=0,
@@ -801,6 +912,10 @@ def compute_probs(LB=L5,
     H_atm: atmosphere, 1: threshold, 2: slow rotators
     H_B: magnetic field
     H_ool: origin of life, see function for details
+    H_water:
+    H_binary:
+    H_icy_moons:
+    H_rogue:
     H_guest: quickly adds another criterion. Toggles 0-1-2
     
     To add a new variable, need to change:
@@ -836,6 +951,7 @@ def compute_probs(LB=L5,
             H_eccentricity,H_obliquity,H_ocean,\
             H_atm,H_B,\
             H_ool,\
+            H_water,H_binary,H_icy_moons,H_rogue,\
             H_guest]
     data=[]
     ids=[]
@@ -864,7 +980,7 @@ def compute_probs(LB=L5,
         if tuple(P_list) in cached_ps:
             ps = cached_ps[tuple(P_list)]
         else:
-            ps = probs_nobs(LB=LB, P_list=P_list, 
+            ps = probs_nobs(LB=LB, CB=CB, P_list=P_list, 
                         Q_l=Q_l, Q_ER=Q_ER,
                         n_hard=n_hard,
                         k_C=k_C,k_O=k_O,k_Mg=k_Mg,k_Si=k_Si,

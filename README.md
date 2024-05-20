@@ -1,10 +1,14 @@
 Code to compare multiple habitability hypoetheses in the multiverse framework.  This computes the probability of observing five fundamental constants:
-alpha = e^2/(4pi), 
-beta = m_electron/m_proton,
-gamma = m_proton/M_planck,
-delta_u = m_up/m_proton,
-delta_d = m_down/m_proton, 
-and optionally the probability of orbiting a star as massive as ours, the probability of observing such a small Hoyle resonance energy, and the probability of observing an organic-to-rock ratio as large as ours.  The code currently considers 27 different habitability conditions, amounting to 224x10^9 possible combinations.
+- alpha = e^2/(4pi), 
+- beta = m_electron/m_proton,
+- gamma = m_proton/M_planck,
+- delta_u = m_up/m_proton,
+- delta_d = m_down/m_proton, 
+and optionally the probability of:
+- orbiting a star as massive as ours, 
+- observing such a small Hoyle resonance energy, 
+- observing an organic-to-rock ratio as large as ours.  
+The code currently considers 31 different habitability conditions, amounting to 19x10^12 possible combinations.
 
 To initialize, run
 
