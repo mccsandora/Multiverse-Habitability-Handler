@@ -59,40 +59,42 @@ def cachewrap(f):
             return O
     return fwrap
 
-P_primes=[['      ',' photo','yellow'],\
-          ['   ',' TL',' ~TL'],\
-          ['     ',' conv'],\
-          ['    ',' bio'],\
-          ['       ',' plates'],\
-          ['   ',' HJ','hj-pd'],\
-          ['    ','  GI','  iso'],\
-          ['     ',' temp'],\
-          ['     ',' time'],\
-          ['     ',' area'],\
-          ['  ',' S',' C',' min(S,C)'],\
-          ['       ',' O2down','   O2up',' O2both'],\
-          ['        ',' setback','     IDH','   reset'],\
-          ['       ',' comets',],\
-          ['     ',' grbs'],\
-          ['     ',' glac'],\
-          ['    ',' vol'],\
-          ['      ',' metal'],\
-          ['    ',' C/O',' Mg/Si'],\
-          [' ',' nitrogen',' phosphorus',' sulfur'],\
-          ['   ',' iron'],\
-          ['             ',' eccentricity'],\
-          ['          ',' obliquity'],\
-          ['                ','  h2o(asteroids)',' h2o(grand tack)',\
-           '     h2o(comets)',' h2o(magma ocean)'],\
-          ['    ',' atm',' slow rot'],\
-          ['  ',' B'],\
+P_primes=[['      ',' photo','yellow'],
+          ['   ',' TL',' ~TL'],
+          ['     ',' conv'],
+          ['    ',' bio'],
+          ['       ',' plates'],
+          ['   ',' HJ','hj-pd'],
+          ['    ','  GI','  iso'],
+          ['     ',' temp'],
+          ['     ',' time'],
+          ['     ',' area'],
+          ['  ',' S',' C',' min(S,C)'],
+          ['       ',' O2down','   O2up',' O2both'],
+          ['        ',' setback','     IDH','   reset'],
+          ['       ',' comets',],
+          ['     ',' grbs'],
+          ['     ',' glac'],
+          ['    ',' vol'],
+          ['      ',' metal'],
+          ['    ',' C/O',' Mg/Si'],
+          [' ',' nitrogen',' phosphorus',' sulfur'],
+          ['   ',' iron'],
+          ['             ',' eccentricity'],
+          ['          ',' obliquity'],
+          ['                ','  h2o(asteroids)',' h2o(grand tack)',
+           '     h2o(comets)',' h2o(magma ocean)'],
+          ['    ',' atm',' slow rot'],
+          ['  ',' B'],
           ['',' lightning', ' SEP', ' XUV', ' vents', ' IDP',' comets',
-           ' asteroids', ' moneta',' plan pans',' stel pans'],\
+           ' asteroids', ' moneta',' plan pans',' stel pans'],
           ['',' K/Na/Cl pumps', ' ice floats', ' viscosity increased 23%',
-           ' viscosity + ice', ' al26', ' water weight'],\
-          ['       ',' binary'],\
-          ['          ',' icy moons'],\
-          ['      ',' rogue'],\
+           ' viscosity + ice', ' al26', ' water weight'],
+          ['       ',' binary'],
+          ['          ',' icy moons'],
+          ['      ',' rogue'],
+          ['    ',' sfr'],
+          ['        ',' disrupt','      SN','     agn'],
           ['      ',' guest',' tseug']]
 
 P_rims = [[p[0].strip()]+p[1:] for p in P_primes]

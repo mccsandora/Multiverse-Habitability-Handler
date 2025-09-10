@@ -2,7 +2,7 @@ import os, pickle
 import math, time, itertools
 import numpy as np
 import pandas as pd
-from scipy.special import erf, erfc, expi
+from scipy.special import erf, erfc, expi, lambertw
 from scipy.integrate import quad
 from tqdm import tqdm
 
@@ -23,6 +23,12 @@ def unpack_C(C,num):
 def pmeas(L): # theory measure
     l,a,b,c,du,dd=tuple(L)
     return 1/b/c/du/dd
+
+@cachewrap
+def W(L,k_W): # induced weight
+    l,a,b,c,du,dd=tuple(L)
+    return c**k_W
+    
 @cachewrap
 def Nstars(L): # number of stars in the universe
     l,a,b,c,du,dd=tuple(L)
@@ -699,35 +705,66 @@ def f_icy_moons(L, kappa_hat, p_icymoons):
     else:
         return 1
     
+############
+# GALACTIC #
+############
+
 @cachewrap
-def f_stellar_surface(L,p_ss):
+def f_sfr(L,kappa_hat,Q_hat,p_sfr):
     l,a,b,c,du,dd=tuple(L)
-    ss = 21.17*(1.8*l)**(19/40)*a**(-3/2)*b**(-1)*c**(1/4)
-    if p_ss==1:
-        return heaviside(1-ss)
+    if p_sfr==1:
+        # cutoffs at .1 of peak
+        mlow = .081*a**(3/2)*Q_hat**(-3/2)
+        mup = 41.0*Q_hat**(3/2)*kappa_hat**(-9/2)*a**(-6)*b**(6)*c**(3)
+        # cutoffs at .01 of peak
+        #mlow = .018*a**(3/2)*Q_hat**(-3/2)
+        #mup = 984.5*Q_hat**(3/2)*kappa_hat**(-9/2)*a**(-6)*b**(6)*c**(3)
+        f = erfc(mlow**(2/3))-erfc(mup**(2/3))
+        return f*(f>0)
     else:
         return 1
+
+@cachewrap
+def f_disrupt(L,kappa_hat,Q_hat,p_disrupt,k_disrupt):
+    l,a,b,c,du,dd=tuple(L)
+    if p_disrupt==1: # stellar encountes
+        return k_disrupt**(kappa_hat**3*(1.8*l)*a**(-17/2)*b**(-19/4))
+    if p_disrupt==2: # sn
+        return k_disrupt**(kappa_hat**(3/2)*(1.8*l)**(-2)*a**(-1)*b**(-5)*c**(-5/2))
+    if p_disrupt==3: # agn
+        xo = np.real(-1-lambertw(-k_disrupt/np.e,-1))
+        x = xo*Q_hat**(1/2)*kappa_hat**(3/2)*a**(-4)*b**(-11/4)
+        return (1+x)*np.exp(-x)
+    else:
+        return 1
+    
     
 #######################
 # NUMBER OF OBSERVERS #
 #######################
 
-def probs_nobs(LB, P_list, CB=(1,1), Q_l=1, Q_ER=0, n_hard=1,
+def probs_nobs(LB, P_list, CB=(1,1), 
+               Q_l=1, Q_ER=0, Q_C=0,
+               n_hard=1,
                k_C=-.0089, k_O=.0037, k_Mg=-.500, k_Si=.0062,
                e_max=.35, r_damp=.5, k_h2o=0,
                k_atm_source=0, k_atm_N=0, k_atm_min=0,
                k_SEP=1,
+               k_W=1/4,
+               k_disrupt=.99,
                k_guest=0,
                p_measure=pmeas,
                return_ps=True):
     p_photo,p_TL,p_conv,p_bio,p_plates,\
-    p_hj,p_terr,p_temp,p_time,p_area,p_S,\
+    p_hj,p_terr,p_temp,\
+    p_time,p_area,p_S,\
     p_O2,p_death,p_comets,p_grb,p_glac,p_vol,\
     p_metal,p_CO,p_NPS,p_Fe,\
     p_eccentricity,p_obliquity,p_ocean,\
     p_atm,p_B,\
     p_ool,\
     p_water,p_binary,p_icy_moons,p_rogue,\
+    p_sfr,p_disrupt,\
     p_guest = P_list
 
     L = LB[p_plates+2*(p_CO>0)]
@@ -735,6 +772,7 @@ def probs_nobs(LB, P_list, CB=(1,1), Q_l=1, Q_ER=0, n_hard=1,
     Q_hat, kappa_hat = unpack_C(CB,len(l))
 
     n = p_measure(L)\
+        *W(L,k_W)\
         *Nstars(L)\
         *masch(L)\
         *f_photo(L, p_photo)\
@@ -764,7 +802,9 @@ def probs_nobs(LB, P_list, CB=(1,1), Q_l=1, Q_ER=0, n_hard=1,
         *f_water(L, kappa_hat, p_water)\
         *f_binary(L, p_binary)\
         *f_rogue(L, kappa_hat, p_rogue)\
-        *f_icy_moons(L, kappa_hat, p_icy_moons)
+        *f_icy_moons(L, kappa_hat, p_icy_moons)\
+        *f_sfr(L,kappa_hat,Q_hat,p_sfr)\
+        *f_disrupt(L,kappa_hat,Q_hat,p_disrupt,k_disrupt)
     
     if return_ps:
         D = np.sum(n)
@@ -780,6 +820,8 @@ def probs_nobs(LB, P_list, CB=(1,1), Q_l=1, Q_ER=0, n_hard=1,
                          k_h2o, 
                          k_atm_source, k_atm_N, k_atm_min,
                          k_SEP,
+                         k_W,
+                         k_disrupt,
                          k_guest,
                          p_measure)
             pall.append(pl)
@@ -789,6 +831,11 @@ def probs_nobs(LB, P_list, CB=(1,1), Q_l=1, Q_ER=0, n_hard=1,
             pER2 = np.sum(n[(Delta_ER>0) & (Delta_ER<.0035)])/D
             pall.append(m3(pER))     
             pall.append(m3(pER2))
+        if Q_C==1:
+            #pQh = np.sum(n[Q_hat>=1])/D
+            pkh = np.sum(n[kappa_hat>=1])/D
+            pall.append(m3(pkh))
+        pall.append(np.sum(n>0))
         return pall
     else:
         return n
@@ -798,6 +845,8 @@ def probs_l(L, P_list, CB, n_hard,
             k_h2o, 
             k_atm_source, k_atm_N, k_atm_min,
             k_SEP,
+            k_W,
+            k_disrupt,
             k_guest,
             p_measure): 
     # probability of being around a sunlike star within our universe
@@ -808,6 +857,8 @@ def probs_l(L, P_list, CB, n_hard,
                     k_h2o=k_h2o, 
                     k_atm_source=k_atm_source, k_atm_N=k_atm_N, k_atm_min=k_atm_min,
                     k_SEP=k_SEP,
+                    k_W=k_W,
+                    k_disrupt=k_disrupt,
                     k_guest=k_guest,
                     p_measure=p_measure,
                     return_ps=False)
@@ -863,14 +914,19 @@ def compute_probs(LB=L5,
                   H_binary=[0],
                   H_icy_moons=[0],
                   H_rogue=[0],
+                  H_sfr=[0],
+                  H_disrupt=[0],
                   H_guest=[0],
                   Q_l=0,
                   Q_ER=0,
+                  Q_C=0,
                   n_hard=1,
                   k_C=-.0089,k_O=.0037,k_Mg=-.500,k_Si=.0062,
                   e_max=.25, r_damp=.5, k_h2o=0,
                   k_atm_source=0, k_atm_N=0, k_atm_min=0,
                   k_SEP=1,
+                  k_W=1/4,
+                  k_disrupt=.99,
                   k_guest=0,
                   p_measure=pmeas,
                   min_prob=-1,
@@ -916,15 +972,17 @@ def compute_probs(LB=L5,
     H_binary:
     H_icy_moons:
     H_rogue:
+    H_disrupt:
     H_guest: quickly adds another criterion. Toggles 0-1-2
     
-    To add a new variable, need to change:
+    **  To add a new variable, need to change:
         Hs, H_list, P_primes, and ps in probs_nobs
     
     Q_l: calculates p(M_sun) if =1
     Q_avg: caluclates N_obs/<N> if =1
     Q_tO2: calculates p(t_O2/t_star) if =1
     Q_ER: calculates p(E_R) if =1
+    Q_C: calculates p(Q), p(kappa) if =1
     n_hard: number of hard steps
     k_C, k_O, k_Mg, k_Si: threshold energies for these elements
     e_max: maximum allowable eccentricity
@@ -934,7 +992,8 @@ def compute_probs(LB=L5,
     k_atm_N: exponent, how planet atmosphere scales with nitrogen abundance
     k_atm_min: minimum atmosphere: 0: x-ray 1: triple point 2: diurnal
     k_SEP: exponent, distribution of SEP energy
-    k_guest: quickly adds another paramter
+    k_W: induced weight
+    k_guest: quickly adds another parameter
     p_measure: changes prior measure of universe abundances
     B0: baseline Bayes factor to compare against
     verbose: prints probabilities
@@ -943,15 +1002,16 @@ def compute_probs(LB=L5,
     return_df: returns results as a dataframe
     use_cache: file path, avoids redoing same computations
     """        
-    H_list=[H_photo,H_TL,H_conv,H_bio,\
-            H_plates,H_hj,H_terr,H_temp,\
-            H_time,H_area,H_S,H_O2,\
-            H_death,H_comets,H_grbs,H_glac,H_vol,\
-            H_metal,H_CO,H_NPS,H_Fe,\
-            H_eccentricity,H_obliquity,H_ocean,\
-            H_atm,H_B,\
-            H_ool,\
-            H_water,H_binary,H_icy_moons,H_rogue,\
+    H_list=[H_photo,H_TL,H_conv,H_bio,
+            H_plates,H_hj,H_terr,H_temp,
+            H_time,H_area,H_S,H_O2,
+            H_death,H_comets,H_grbs,H_glac,H_vol,
+            H_metal,H_CO,H_NPS,H_Fe,
+            H_eccentricity,H_obliquity,H_ocean,
+            H_atm,H_B,
+            H_ool,
+            H_water,H_binary,H_icy_moons,H_rogue,
+            H_sfr,H_disrupt,
             H_guest]
     data=[]
     ids=[]
@@ -967,7 +1027,9 @@ def compute_probs(LB=L5,
             +', p(lambda) '*Q_l\
             +', N_0/<N> '*Q_avg\
             +', p(tO2/tstar)_u , p(tO2/tstar)_m '*Q_tO2\
-            +', p(E_R), p(sugar/rock) '*Q_ER
+            +', p(E_R), p(sugar/rock) '*Q_ER\
+            +', p(kappa) '*Q_C\
+            +', supp'
     if verbose:
         print('['+header+']')
     H_all = itertools.product(*H_list)
@@ -981,12 +1043,14 @@ def compute_probs(LB=L5,
             ps = cached_ps[tuple(P_list)]
         else:
             ps = probs_nobs(LB=LB, CB=CB, P_list=P_list, 
-                        Q_l=Q_l, Q_ER=Q_ER,
+                        Q_l=Q_l, Q_ER=Q_ER, Q_C=Q_C,
                         n_hard=n_hard,
                         k_C=k_C,k_O=k_O,k_Mg=k_Mg,k_Si=k_Si,
                         k_h2o=k_h2o, e_max=e_max, r_damp=r_damp,
                         k_atm_source=k_atm_source, k_atm_N=k_atm_N, k_atm_min=k_atm_min,
                         k_SEP=k_SEP,
+                        k_W=k_W,
+                        k_disrupt=k_disrupt,
                         k_guest=k_guest,
                         p_measure=p_measure)
             if use_cache:
@@ -997,7 +1061,7 @@ def compute_probs(LB=L5,
             if min(ps)>min_prob:
                 print(signs(P_list))
                 print(ps)
-            print('bayes factor:',r3(np.prod(ps)/B0))
+            print('bayes factor:',r3(np.prod(ps[:-1])/B0))
         P_lists.append(P_list)
         data.append(ps)
         ids.append(signs(P_list))
@@ -1009,7 +1073,7 @@ def compute_probs(LB=L5,
         df = pd.DataFrame(data,
                           columns=cols,
                           index=ids)
-        prod = df.prod(1)
+        prod = df[cols[:-1]].prod(1)
         df['min']=df.apply(min,axis=1)
         df['product']=prod
         if return_Plist:
